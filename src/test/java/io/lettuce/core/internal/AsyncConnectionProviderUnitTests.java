@@ -170,7 +170,7 @@ class AsyncConnectionProviderUnitTests {
     @Test
     void closeShouldWaitForPendingConnectionAndCloseIt() {
 
-        CompletableFuture<TestConnection> actualConnection = new CompletableFuture<>();
+        NonCancellableFuture<TestConnection> actualConnection = new NonCancellableFuture<>();
         AsyncConnectionProvider<String, TestConnection> sut = new AsyncConnectionProvider<>(key -> actualConnection);
 
         sut.getConnection("key");

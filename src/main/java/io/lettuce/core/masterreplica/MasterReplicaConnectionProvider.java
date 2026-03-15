@@ -159,7 +159,7 @@ class MasterReplicaConnectionProvider<K, V> {
 
         RedisURI uri = redisNodeDescription.getUri();
 
-        return connectionProvider.getConnection(toConnectionKey(uri)).toCompletableFuture();
+        return connectionProvider.getConnection(toConnectionKey(uri));
     }
 
     /**
