@@ -156,7 +156,7 @@ class PooledClusterConnectionProvider<K, V>
             return getReadConnection(slot);
         }
 
-        return getWriteConnection(slot).toCompletableFuture();
+        return getWriteConnection(slot);
     }
 
     private CompletableFuture<StatefulRedisConnection<K, V>> getWriteConnection(int slot) {
@@ -548,7 +548,7 @@ class PooledClusterConnectionProvider<K, V>
         try {
             beforeGetConnection(connectionIntent, host, port);
 
-            return connectionProvider.getConnection(new ConnectionKey(connectionIntent, host, port)).toCompletableFuture();
+            return connectionProvider.getConnection(new ConnectionKey(connectionIntent, host, port));
         } catch (RedisException e) {
             throw e;
         } catch (RuntimeException e) {
