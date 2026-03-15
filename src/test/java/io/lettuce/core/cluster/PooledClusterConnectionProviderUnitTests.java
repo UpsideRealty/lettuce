@@ -420,6 +420,21 @@ class PooledClusterConnectionProviderUnitTests {
     }
 
     @Test
+    void shouldPropagateCancellationToUnderlyingConnectionAttempt() {
+
+        CompletableFuture<StatefulRedisConnection<String, String>> actualConnection = new CompletableFuture<>();
+
+        when(clientMock.connectToNodeAsync(eq(StringCodec.UTF8), eq("localhost:1"), any(), any()))
+                .thenReturn(ConnectionFuture.from(socketAddressMock, actualConnection));
+
+        ConnectionFuture<StatefulRedisConnection<String, String>> future = sut
+                .getConnectionAsync(new ClusterNodeConnectionFactory.ConnectionKey(ConnectionIntent.WRITE, "localhost", 1));
+
+        assertThat(future.cancel(false)).isTrue();
+        assertThat(actualConnection).isCancelled();
+    }
+
+    @Test
     void shouldRejectConnectionsToUnknownNodeId() {
 
         assertThatThrownBy(() -> sut.getConnection(ConnectionIntent.READ, "foobar"))

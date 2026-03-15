@@ -50,7 +50,7 @@ class MasterReplicaConnectionProvider<K, V> {
 
     private final RedisURI initialRedisUri;
 
-    private final AsyncConnectionProvider<ConnectionKey, StatefulRedisConnection<K, V>, CompletionStage<StatefulRedisConnection<K, V>>> connectionProvider;
+    private final AsyncConnectionProvider<ConnectionKey, StatefulRedisConnection<K, V>> connectionProvider;
 
     private List<RedisNodeDescription> knownNodes = new ArrayList<>();
 

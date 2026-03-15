@@ -19,6 +19,8 @@
  */
 package io.lettuce.core.cluster;
 
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -26,6 +28,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.locks.Lock;
@@ -96,7 +99,7 @@ class PooledClusterConnectionProvider<K, V>
 
     private final RedisCodec<K, V> redisCodec;
 
-    private final AsyncConnectionProvider<ConnectionKey, StatefulRedisConnection<K, V>, ConnectionFuture<StatefulRedisConnection<K, V>>> connectionProvider;
+    private final AsyncConnectionProvider<ConnectionKey, StatefulRedisConnection<K, V>> connectionProvider;
 
     private Partitions partitions;
 
@@ -458,23 +461,73 @@ class PooledClusterConnectionProvider<K, V>
 
     protected ConnectionFuture<StatefulRedisConnection<K, V>> getConnectionAsync(ConnectionKey key) {
 
-        ConnectionFuture<StatefulRedisConnection<K, V>> connectionFuture = connectionProvider.getConnection(key);
-        CompletableFuture<StatefulRedisConnection<K, V>> result = new CompletableFuture<>();
+        CompletableFuture<StatefulRedisConnection<K, V>> connectionFuture = connectionProvider.getConnection(key);
+        SocketAddress remoteAddress = getRemoteAddress(key);
+        CompletableFuture<StatefulRedisConnection<K, V>> result = new CompletableFuture<StatefulRedisConnection<K, V>>() {
 
-        connectionFuture.handle((connection, throwable) -> {
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+                boolean cancelled = super.cancel(mayInterruptIfRunning);
+                connectionFuture.cancel(mayInterruptIfRunning);
+                return cancelled;
+            }
+
+        };
+
+        connectionFuture.whenComplete((connection, throwable) -> {
 
             if (throwable != null) {
 
-                result.completeExceptionally(
-                        RedisConnectionException.create(connectionFuture.getRemoteAddress(), Exceptions.bubble(throwable)));
+                result.completeExceptionally(RedisConnectionException.create(remoteAddress, Exceptions.bubble(throwable)));
             } else {
                 result.complete(connection);
             }
-
-            return null;
         });
 
-        return ConnectionFuture.from(connectionFuture.getRemoteAddress(), result);
+        return ConnectionFuture.from(remoteAddress, result);
+    }
+
+    private SocketAddress getRemoteAddress(ConnectionKey key) {
+
+        if (key.host != null) {
+            return InetSocketAddress.createUnresolved(key.host, key.port);
+        }
+
+        if (key.nodeId != null && partitions != null) {
+            RedisClusterNode partition = partitions.getPartitionByNodeId(key.nodeId);
+            if (partition != null) {
+                RedisURI uri = partition.getUri();
+                return InetSocketAddress.createUnresolved(uri.getHost(), uri.getPort());
+            }
+        }
+
+        return null;
+    }
+
+    private static <T> ConnectionFuture<T> propagateCancellation(ConnectionFuture<?> source, CompletionStage<T> stage) {
+
+        CompletableFuture<T> delegate = stage.toCompletableFuture();
+        CompletableFuture<T> result = new CompletableFuture<T>() {
+
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+                boolean cancelled = super.cancel(mayInterruptIfRunning);
+                delegate.cancel(mayInterruptIfRunning);
+                source.cancel(mayInterruptIfRunning);
+                return cancelled;
+            }
+
+        };
+
+        delegate.whenComplete((value, throwable) -> {
+            if (throwable != null) {
+                result.completeExceptionally(throwable);
+            } else {
+                result.complete(value);
+            }
+        });
+
+        return ConnectionFuture.from(source.getRemoteAddress(), result);
     }
 
     @Override
@@ -744,7 +797,7 @@ class PooledClusterConnectionProvider<K, V>
 
             if (key.connectionIntent == ConnectionIntent.READ) {
 
-                connection = connection.thenCompose(c -> {
+                connection = propagateCancellation(connection, connection.thenCompose(c -> {
 
                     RedisFuture<String> stringRedisFuture = c.async().readOnly();
                     return stringRedisFuture.thenApply(s -> c).whenCompleteAsync((s, throwable) -> {
@@ -752,11 +805,11 @@ class PooledClusterConnectionProvider<K, V>
                             c.close();
                         }
                     });
-                });
+                }));
             }
 
             RedisClusterNode actualNode = targetNode;
-            connection = connection.thenApply(c -> {
+            connection = propagateCancellation(connection, connection.thenApply(c -> {
                 stateLock.lock();
                 try {
                     c.setAutoFlushCommands(autoFlushCommands);
@@ -765,7 +818,7 @@ class PooledClusterConnectionProvider<K, V>
                     stateLock.unlock();
                 }
                 return c;
-            });
+            }));
 
             return connection;
         }
