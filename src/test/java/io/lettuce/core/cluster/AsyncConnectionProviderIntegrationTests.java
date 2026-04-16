@@ -70,7 +70,7 @@ class AsyncConnectionProviderIntegrationTests {
 
     private CountDownLatch connectInitiated = new CountDownLatch(1);
 
-    private AsyncConnectionProvider<ConnectionKey, StatefulRedisConnection<String, String>, ConnectionFuture<StatefulRedisConnection<String, String>>> sut;
+    private AsyncConnectionProvider<ConnectionKey, StatefulRedisConnection<String, String>> sut;
 
     @Inject
     AsyncConnectionProviderIntegrationTests(ClientResources resources) {
@@ -100,7 +100,7 @@ class AsyncConnectionProviderIntegrationTests {
                 return future;
             }
 
-        });
+        }, resources.eventExecutorGroup());
     }
 
     @AfterEach
