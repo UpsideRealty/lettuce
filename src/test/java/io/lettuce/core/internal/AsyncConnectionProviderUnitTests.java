@@ -215,6 +215,20 @@ class AsyncConnectionProviderUnitTests {
     }
 
     @Test
+    void closeShouldCompleteIfConnectStartAbortsAfterMarkingStarted() {
+
+        AsyncConnectionProvider.Sync<String, TestConnection> sync = new AsyncConnectionProvider.Sync<>("key");
+
+        sync.markConnectStarted();
+        sync.completeCloseWithoutConnection();
+
+        CompletableFuture<Void> closeFuture = sync.close();
+
+        assertThat(sync.getSharedConnection()).isCancelled();
+        assertThat(closeFuture).isCompleted();
+    }
+
+    @Test
     void closeShouldWaitForPendingConnectionAndCloseIt() {
 
         NonCancellableFuture<TestConnection> actualConnection = new NonCancellableFuture<>();

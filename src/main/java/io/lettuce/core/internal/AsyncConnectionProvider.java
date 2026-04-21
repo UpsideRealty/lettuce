@@ -392,9 +392,10 @@ public class AsyncConnectionProvider<K, T extends AsyncCloseable> {
         }
 
         public void completeCloseWithoutConnection() {
-            if (closeRequested.get()) {
-                closeFuture.complete(null);
+            if (PHASE.compareAndSet(this, PHASE_IN_PROGRESS, PHASE_CANCELED)) {
+                sharedConnection.cancel(false);
             }
+            closeFuture.complete(null);
         }
 
         void doWithConnection(Consumer<? super T> action) {
